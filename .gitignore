@@ -1,0 +1,28 @@
+# Artefatos sensíveis / gerados em runtime — NÃO versionar
+
+# Credenciais com hashes de senha (geradas localmente em cada ambiente)
+usuarios/usuarios.json
+
+# Arquivos de backup criptografados
+backup/arquivos/
+
+# Logs gerados em runtime (mantém o diretório via .gitkeep)
+logs/*.log
+
+# Relatórios de auditoria gerados (mantém o diretório via .gitkeep)
+auditoria/relatorios/*.txt
+
+# Baseline de integridade (gerado por ambiente)
+integridade/baseline.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Sistema operacional / editores
+.DS_Store
+*.swp
+*~

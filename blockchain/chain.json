@@ -1,0 +1,9 @@
+[
+  {
+    "id": 0,
+    "timestamp": "2026-06-17T23:47:58.918241+00:00",
+    "evento": "GENESIS - inicialização da blockchain de auditoria",
+    "hash_anterior": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash_atual": "56d04d38637791644d4b03c85a9fd5b6aa1747a3cca08e39623c0cf7f345a60e"
+  }
+]

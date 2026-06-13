@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SecureChain Audit - Blockchain de Auditoria (RF04)
-==================================================
+SecureChain Audit - Blockchain de Auditoria (RF04 e RF07)
+==========================================================
 
 Implementa uma blockchain simples, porém funcional, usada como trilha de
 auditoria imutável. Cada evento relevante do sistema (login, alteração de
@@ -16,7 +16,8 @@ Estrutura de cada bloco (campos obrigatórios do enunciado):
     hash_atual    -> SHA-256 calculado sobre todos os campos do bloco
 
 A imutabilidade vem do encadeamento: alterar qualquer campo de um bloco muda o
-seu hash_atual, o que quebra o campo hash_anterior do bloco seguinte.
+seu hash_atual, o que quebra o campo hash_anterior do bloco seguinte. A função
+validar_cadeia() detecta exatamente esse tipo de adulteração (RF07).
 """
 
 import hashlib
@@ -85,7 +86,7 @@ class Bloco:
 
 
 class Blockchain:
-    """Gerencia a cadeia de blocos: criação e persistência."""
+    """Gerencia a cadeia de blocos: criação, persistência e validação."""
 
     def __init__(self, caminho=CAMINHO_CHAIN_PADRAO):
         self.caminho = caminho
@@ -154,6 +155,57 @@ class Blockchain:
         return novo
 
     # ------------------------------------------------------------------ #
+    # Validação (RF07)
+    # ------------------------------------------------------------------ #
+    def validar_cadeia(self):
+        """
+        Percorre toda a cadeia em busca de sinais de manipulação.
+
+        Detecta:
+          1. Bloco cujo hash recalculado difere do hash armazenado
+             (adulteração direta do conteúdo de um bloco);
+          2. hash_anterior de um bloco diferente do hash_atual do bloco anterior
+             (quebra do encadeamento).
+
+        Retorna uma tupla (valida, problemas), onde 'problemas' é uma lista de
+        dicionários descrevendo cada inconsistência encontrada.
+        """
+        problemas = []
+
+        for i, bloco in enumerate(self.cadeia):
+            # (1) Adulteração direta: o hash não corresponde ao conteúdo.
+            hash_recalculado = bloco.calcular_hash()
+            if hash_recalculado != bloco.hash_atual:
+                problemas.append({
+                    "bloco_id": bloco.id,
+                    "tipo": "ADULTERACAO_DIRETA",
+                    "detalhe": (
+                        f"Hash armazenado ({bloco.hash_atual[:16]}...) difere do "
+                        f"hash recalculado ({hash_recalculado[:16]}...). O conteúdo "
+                        f"do bloco foi alterado."
+                    ),
+                })
+
+            if i == 0:
+                # O bloco gênesis não tem antecessor real para comparar.
+                continue
+
+            anterior = self.cadeia[i - 1]
+
+            # (2) Quebra de encadeamento.
+            if bloco.hash_anterior != anterior.hash_atual:
+                problemas.append({
+                    "bloco_id": bloco.id,
+                    "tipo": "QUEBRA_ENCADEAMENTO",
+                    "detalhe": (
+                        f"hash_anterior do bloco {bloco.id} não corresponde ao "
+                        f"hash_atual do bloco {anterior.id}. A cadeia foi rompida."
+                    ),
+                })
+
+        return (len(problemas) == 0, problemas)
+
+    # ------------------------------------------------------------------ #
     # Utilidades
     # ------------------------------------------------------------------ #
     def listar(self):
@@ -167,13 +219,34 @@ class Blockchain:
 # ---------------------------------------------------------------------- #
 # Interface de linha de comando
 # ---------------------------------------------------------------------- #
+def _alerta_administrador(problemas):
+    """Exibe um alerta claro para o administrador (RF07)."""
+    print("\n" + "=" * 60)
+    print("  ALERTA DE SEGURANÇA - INTEGRIDADE DA BLOCKCHAIN COMPROMETIDA")
+    print("=" * 60)
+    for p in problemas:
+        print(f"  [BLOCO {p['bloco_id']}] {p['tipo']}")
+        print(f"      -> {p['detalhe']}")
+    print("=" * 60)
+    print("  Ação recomendada: investigar imediatamente os blocos acima.")
+    print("=" * 60 + "\n")
+
+
 def main():
     import sys
 
     bc = Blockchain()
     comando = sys.argv[1] if len(sys.argv) > 1 else "ajuda"
 
-    if comando == "listar":
+    if comando == "validar":
+        valida, problemas = bc.validar_cadeia()
+        if valida:
+            print(f"[OK] Blockchain íntegra. {len(bc)} blocos validados.")
+        else:
+            _alerta_administrador(problemas)
+            sys.exit(1)
+
+    elif comando == "listar":
         for b in bc.listar():
             print(f"#{b['id']:>3} | {b['timestamp']} | {b['evento']}")
             print(f"       hash_anterior: {b['hash_anterior']}")
@@ -186,7 +259,7 @@ def main():
         print(f"[OK] Bloco #{bloco.id} registrado: {bloco.evento}")
 
     else:
-        print("Uso: python3 blockchain.py [listar|registrar <evento>]")
+        print("Uso: python3 blockchain.py [validar|listar|registrar <evento>]")
 
 
 if __name__ == "__main__":

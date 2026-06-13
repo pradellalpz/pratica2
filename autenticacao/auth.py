@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SecureChain Audit - Sistema de Autenticação (RF02)
-==================================================
+SecureChain Audit - Sistema de Autenticação (RF02 e Zero Trust)
+================================================================
 
-Módulo responsável por cadastro, login e controle de sessão dos usuários da
-aplicação SecureChain. Todo acesso (bem-sucedido ou negado) é registrado de
-forma imutável na blockchain de auditoria.
+Módulo responsável por cadastro, login, controle de sessão e perfis de
+usuário da aplicação SecureChain. Todo acesso (bem-sucedido ou negado) é
+registrado de forma imutável na blockchain de auditoria.
 
 Segurança de senhas (RF02 / Requisito 7.1):
     As senhas NUNCA são armazenadas em texto puro. Utilizamos PBKDF2-HMAC-SHA256
@@ -31,6 +31,13 @@ from datetime import datetime, timezone
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "blockchain"))
 from blockchain import Blockchain  # noqa: E402
+
+# Perfis válidos e suas descrições (separação de funções).
+PERFIS_VALIDOS = {
+    "admin": "Administrador - acesso total ao sistema securechain",
+    "analista": "Analista - leitura e execução dos módulos",
+    "visitante": "Visitante - somente leitura dos relatórios",
+}
 
 CAMINHO_USUARIOS = os.path.join(RAIZ, "usuarios", "usuarios.json")
 
@@ -82,6 +89,14 @@ def validar_senha(senha):
     return senha
 
 
+def validar_perfil(perfil):
+    if perfil not in PERFIS_VALIDOS:
+        raise ValueError(
+            f"Perfil inválido: '{perfil}'. Use um de {list(PERFIS_VALIDOS)}."
+        )
+    return perfil
+
+
 # ---------------------------------------------------------------------- #
 # Gerenciador de usuários e autenticação
 # ---------------------------------------------------------------------- #
@@ -91,7 +106,7 @@ class GerenciadorAuth:
     def __init__(self):
         self.blockchain = Blockchain()
         self.usuarios = self._carregar_usuarios()
-        self.sessao = None  # dict {username, login_em}
+        self.sessao = None  # dict {username, perfil, login_em}
 
     # --------------------------- persistência --------------------------- #
     def _carregar_usuarios(self):
@@ -111,16 +126,18 @@ class GerenciadorAuth:
             pass
 
     # ----------------------------- cadastro ----------------------------- #
-    def cadastrar(self, username, senha):
+    def cadastrar(self, username, senha, perfil):
         """Cadastra um novo usuário e registra o evento na blockchain."""
         validar_username(username)
         validar_senha(senha)
+        validar_perfil(perfil)
 
         if username in self.usuarios:
             raise ValueError(f"Usuário '{username}' já existe.")
 
         salt_hex, hash_hex = gerar_hash_senha(senha)
         self.usuarios[username] = {
+            "perfil": perfil,
             "salt": salt_hex,
             "hash": hash_hex,
             "algoritmo": f"pbkdf2_{ALGORITMO}",
@@ -128,7 +145,9 @@ class GerenciadorAuth:
             "criado_em": datetime.now(timezone.utc).isoformat(),
         }
         self._salvar_usuarios()
-        self.blockchain.adicionar_evento(f"Usuário criado: '{username}'")
+        self.blockchain.adicionar_evento(
+            f"Usuário criado: '{username}' (perfil={perfil})"
+        )
         return True
 
     def remover(self, username):
@@ -150,9 +169,12 @@ class GerenciadorAuth:
         if usuario and verificar_senha(senha, usuario["salt"], usuario["hash"]):
             self.sessao = {
                 "username": username,
+                "perfil": usuario["perfil"],
                 "login_em": datetime.now(timezone.utc).isoformat(),
             }
-            self.blockchain.adicionar_evento(f"Login realizado: '{username}'")
+            self.blockchain.adicionar_evento(
+                f"Login realizado: '{username}' (perfil={usuario['perfil']})"
+            )
             return True
 
         # Falha — não revela se o usuário existe ou se a senha está errada.
@@ -171,6 +193,27 @@ class GerenciadorAuth:
     def sessao_ativa(self):
         return self.sessao is not None
 
+    def perfil_ativo(self):
+        return self.sessao["perfil"] if self.sessao else None
+
+    def exige_perfil(self, *perfis_permitidos):
+        """
+        Verifica se o perfil ativo está autorizado. Lança PermissionError caso
+        contrário (Zero Trust: a identidade é verificada a cada ação sensível).
+        """
+        if not self.sessao_ativa():
+            raise PermissionError("Nenhuma sessão ativa. Faça login primeiro.")
+        if self.perfil_ativo() not in perfis_permitidos:
+            self.blockchain.adicionar_evento(
+                f"Acesso negado: '{self.sessao['username']}' "
+                f"(perfil={self.perfil_ativo()}) tentou ação restrita a {perfis_permitidos}"
+            )
+            raise PermissionError(
+                f"Perfil '{self.perfil_ativo()}' não autorizado. "
+                f"Requer: {perfis_permitidos}."
+            )
+        return True
+
 
 # ---------------------------------------------------------------------- #
 # CLI de teste do módulo
@@ -179,26 +222,26 @@ def main():
     auth = GerenciadorAuth()
     comando = sys.argv[1] if len(sys.argv) > 1 else "ajuda"
 
-    if comando == "cadastrar" and len(sys.argv) == 4:
-        _, _, username, senha = sys.argv
-        auth.cadastrar(username, senha)
-        print(f"[OK] Usuário '{username}' cadastrado.")
+    if comando == "cadastrar" and len(sys.argv) == 5:
+        _, _, username, senha, perfil = sys.argv
+        auth.cadastrar(username, senha, perfil)
+        print(f"[OK] Usuário '{username}' cadastrado com perfil '{perfil}'.")
 
     elif comando == "login" and len(sys.argv) == 4:
         _, _, username, senha = sys.argv
         if auth.login(username, senha):
-            print("[OK] Login bem-sucedido.")
+            print(f"[OK] Login bem-sucedido. Perfil ativo: {auth.perfil_ativo()}")
         else:
             print("[FALHA] Usuário ou senha inválidos. Evento registrado.")
             sys.exit(1)
 
     elif comando == "listar":
         for nome, dados in auth.usuarios.items():
-            print(f"  {nome:<16} criado_em={dados['criado_em']}")
+            print(f"  {nome:<16} perfil={dados['perfil']:<10} criado_em={dados['criado_em']}")
 
     else:
         print("Uso:")
-        print("  python3 auth.py cadastrar <usuario> <senha>")
+        print("  python3 auth.py cadastrar <usuario> <senha> <admin|analista|visitante>")
         print("  python3 auth.py login <usuario> <senha>")
         print("  python3 auth.py listar")
 

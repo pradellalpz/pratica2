@@ -1,0 +1,15 @@
+# SecureChain Audit — Dependências
+#
+# Este projeto utiliza EXCLUSIVAMENTE a biblioteca padrão do Python 3, de modo
+# a garantir execução na VM Debian 13 mesmo sem acesso à internet.
+#
+# Módulos usados (todos da stdlib, não requerem instalação):
+#   hashlib, hmac, json, os, sys, re, subprocess, datetime
+#
+# Ferramentas de sistema necessárias (já presentes no Debian 13 ou via apt):
+#   openssl, tar            -> backup criptografado (backup.sh)
+#   iproute2 (ss, ip)       -> auditoria do SO (auditor.py)
+#   nmap                    -> análise de segurança (hacking_etico.sh)
+#
+# Para instalar as ferramentas de sistema, se necessário:
+#   sudo apt update && sudo apt install -y openssl tar iproute2 nmap

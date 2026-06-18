@@ -165,7 +165,8 @@ class Blockchain:
           1. Bloco cujo hash recalculado difere do hash armazenado
              (adulteração direta do conteúdo de um bloco);
           2. hash_anterior de um bloco diferente do hash_atual do bloco anterior
-             (quebra do encadeamento).
+             (quebra do encadeamento);
+          3. IDs fora de sequência (remoção/inserção de blocos).
 
         Retorna uma tupla (valida, problemas), onde 'problemas' é uma lista de
         dicionários descrevendo cada inconsistência encontrada.
@@ -200,6 +201,17 @@ class Blockchain:
                     "detalhe": (
                         f"hash_anterior do bloco {bloco.id} não corresponde ao "
                         f"hash_atual do bloco {anterior.id}. A cadeia foi rompida."
+                    ),
+                })
+
+            # (3) Sequência de IDs.
+            if bloco.id != anterior.id + 1:
+                problemas.append({
+                    "bloco_id": bloco.id,
+                    "tipo": "SEQUENCIA_INVALIDA",
+                    "detalhe": (
+                        f"ID do bloco ({bloco.id}) não segue o anterior "
+                        f"({anterior.id}). Possível remoção ou inserção de bloco."
                     ),
                 })
 
